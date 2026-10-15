@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 (2026-10-15)
+
+- The logo, on the project page and in the documentation. No code change.
+
 ## 0.1.1 (2026-10-15)
 
 - First release available on PyPI. Identical in content to 0.1.0, whose files were withdrawn from PyPI the same day; version numbers cannot be reused there.
