@@ -81,6 +81,8 @@ class Explanation:
     feature_mean: np.ndarray | None = None
     feature_std: np.ndarray | None = None
     instance_index: np.ndarray | None = None
+    configuration_index: int | None = None
+    linguistic_scale_method: object = "mean_abs"
 
     # ------------------------------------------------------------------
     # array interface: values, base values, data, names, indexing
@@ -124,8 +126,10 @@ class Explanation:
             X_explain=None if attr.X_explain is None else attr.X_explain[idx],
         )
         original = self.instance_index if self.instance_index is not None else np.arange(self.n_explain)
+        pools = {name: PartitionPool(pp.partition, pp.pool[:, idx], pp.quantiles[idx], pp.global_quantiles) for name, pp in self.pools.items()}
         return replace(
             self,
+            pools=pools,
             quantiles=self.quantiles[idx],
             concept_pool=self.concept_pool[:, idx],
             sign_confidence=self.sign_confidence[idx],
@@ -463,8 +467,57 @@ class Explanation:
 
     @property
     def front(self) -> pd.DataFrame:
-        """The evaluated configurations with their objectives, Pareto and knee flags (the front as a table)."""
+        """The Pareto optimal configurations with their objectives and flags (the front as a table)."""
         return self.selection.front
+
+    @property
+    def configurations(self) -> pd.DataFrame:
+        """Every evaluated configuration with its objectives, ``pareto`` and ``knee`` flags."""
+        return self.selection.table
+
+    @property
+    def fidelity_optimal(self) -> int:
+        """Index of the front member with the smallest fidelity loss (ties broken by complexity, then instability)."""
+        F = np.asarray(self.selection.objectives, dtype=float)
+        mask = np.asarray(self.selection.pareto, dtype=bool)
+        idx = np.flatnonzero(mask)
+        order = np.lexsort((F[idx, 2], F[idx, 1], F[idx, 0]))
+        return int(idx[order[0]])
+
+    def front_members(self, distinct: bool = True) -> list[int]:
+        """Indices of the front members ordered from the simplest to the most complex explanation."""
+        table = self.selection.distinct_front if distinct else self.selection.front
+        return [int(i) for i in table.sort_values(["complexity", "fidelity_loss"]).index]
+
+    def at(self, index: int) -> "Explanation":
+        """The explanation of another evaluated configuration, for example another member of the front.
+
+        The pools of the candidate partitions are reused, so the call is
+        cheap; for the direct estimator only the partition of the selected
+        configuration carries direct concept values, the other partitions
+        keep the aggregated ones. Instance subsets are preserved.
+        """
+        e = build_explanation(
+            self.selection,
+            int(index),
+            self.pools,
+            self.attribution,
+            disagreement_threshold=self.disagreement_threshold,
+            label_set=self.label_set,
+            linguistic_scale=self.linguistic_scale_method,
+            fuzzy_shape=self.fuzzy_shape,
+            support_percentiles=self.support_percentiles,
+            core_percentiles=self.core_percentiles,
+            concept_estimator=self.concept_estimator,
+            point_estimate=self.point_estimate,
+            feature_weights=self.feature_weights,
+            empty_coalition_value=self.empty_coalition_value if self.selection.configurations[int(index)].partition == self.configuration.partition else None,
+            feature_mean=self.feature_mean,
+            feature_std=self.feature_std,
+        )
+        if self.instance_index is not None:
+            e = replace(e, instance_index=self.instance_index)
+        return e
 
     def to_dict(self) -> dict:
         """JSON serializable summary (without the raw pool)."""
@@ -890,53 +943,17 @@ class Explainer(BaseEstimator):
         return new_pools, empty.reshape(B * M, n)
 
     def _build_explanation(self, selection: SelectionResult, index: int, pools: dict, attr: AttributionResult, empty_coalition_value: np.ndarray | None = None) -> Explanation:
-        cfg = selection.configurations[index]
-        pp = pools[cfg.partition]
-        partition = pp.partition
-        B, M, n, d = attr.values.shape
-        K = partition.n_concepts
-        concept = pp.pool.reshape(B, M, n, K)
-        retained, activity, _ = retained_concepts(pp.quantiles, pp.global_quantiles, cfg.alpha, cfg.sparsity)
-        sc = sign_confidence(pp.pool, axis=0)
-        dis = disagreement_index(concept)
-        type2 = dis > self.disagreement_threshold
-        label_set = self.linguistic_labels if self.linguistic_labels is not None else LinguisticLabelSet()
-        scale = standardization_scale(concept[0, 0], self.linguistic_scale, attr.reference_output)
-        linguistic = label_set.profile_array(pp.quantiles, scale)
-        G = [tfn_from_quantiles(q) for q in pp.global_quantiles]
-        poss = possibility_matrix(G)
-        ranking, dominance = fuzzy_ranking(G)
-        try:
-            csm = selection.concept_membership(cfg.partition)
-        except (KeyError, AttributeError):
-            csm = concept_selection_membership(partition.U, selection.feature_selection_membership)
-        return Explanation(
-            partition=partition,
-            configuration=cfg,
-            retained=retained,
-            activity=activity,
-            quantiles=pp.quantiles,
-            concept_pool=pp.pool,
-            sign_confidence=sc,
-            disagreement=dis,
-            type2_mask=type2,
-            global_quantiles=pp.global_quantiles,
-            possibility=poss,
-            ranking=ranking,
-            dominance=dominance,
-            linguistic=linguistic,
-            label_set=label_set,
-            scale=scale,
-            feature_selection_membership=selection.feature_selection_membership,
-            concept_selection_membership=csm,
-            selection=selection,
-            attribution=attr,
-            reference_output=attr.reference_output,
+        return build_explanation(
+            selection,
+            index,
+            pools,
+            attr,
             disagreement_threshold=self.disagreement_threshold,
+            label_set=self.linguistic_labels if self.linguistic_labels is not None else LinguisticLabelSet(),
+            linguistic_scale=self.linguistic_scale,
             fuzzy_shape=self.fuzzy_shape,
             support_percentiles=tuple(self.support_percentiles),
             core_percentiles=tuple(self.core_percentiles),
-            pools=pools,
             concept_estimator=self.concept_estimator,
             point_estimate=self.point_estimate,
             feature_weights=self.feature_weights,
@@ -951,3 +968,80 @@ class Explainer(BaseEstimator):
 
     def fit_explain(self, X, y, X_explain, feature_names: Sequence[str] | None = None) -> Explanation:
         return self.fit(X, y, feature_names).explain(X_explain)
+
+
+def build_explanation(
+    selection: SelectionResult,
+    index: int,
+    pools: dict,
+    attr: AttributionResult,
+    disagreement_threshold: float = 0.5,
+    label_set: LinguisticLabelSet | None = None,
+    linguistic_scale="mean_abs",
+    fuzzy_shape: str = "trapezoidal",
+    support_percentiles=(5.0, 95.0),
+    core_percentiles=(25.0, 75.0),
+    concept_estimator: str = "aggregate",
+    point_estimate: str = "reference",
+    feature_weights: str = "membership",
+    empty_coalition_value: np.ndarray | None = None,
+    feature_mean: np.ndarray | None = None,
+    feature_std: np.ndarray | None = None,
+) -> Explanation:
+    """Assemble the explanation of configuration ``index`` from the selection and the partition pools."""
+    cfg = selection.configurations[index]
+    pp = pools[cfg.partition]
+    partition = pp.partition
+    B, M, n, d = attr.values.shape
+    K = partition.n_concepts
+    concept = pp.pool.reshape(B, M, n, K)
+    retained, activity, _ = retained_concepts(pp.quantiles, pp.global_quantiles, cfg.alpha, cfg.sparsity)
+    sc = sign_confidence(pp.pool, axis=0)
+    dis = disagreement_index(concept)
+    type2 = dis > disagreement_threshold
+    label_set = label_set if label_set is not None else LinguisticLabelSet()
+    scale = standardization_scale(concept[0, 0], linguistic_scale, attr.reference_output)
+    linguistic = label_set.profile_array(pp.quantiles, scale)
+    G = [tfn_from_quantiles(q) for q in pp.global_quantiles]
+    poss = possibility_matrix(G)
+    ranking, dominance = fuzzy_ranking(G)
+    try:
+        csm = selection.concept_membership(cfg.partition)
+    except (KeyError, AttributeError):
+        csm = concept_selection_membership(partition.U, selection.feature_selection_membership)
+    return Explanation(
+        partition=partition,
+        configuration=cfg,
+        retained=retained,
+        activity=activity,
+        quantiles=pp.quantiles,
+        concept_pool=pp.pool,
+        sign_confidence=sc,
+        disagreement=dis,
+        type2_mask=type2,
+        global_quantiles=pp.global_quantiles,
+        possibility=poss,
+        ranking=ranking,
+        dominance=dominance,
+        linguistic=linguistic,
+        label_set=label_set,
+        scale=scale,
+        feature_selection_membership=selection.feature_selection_membership,
+        concept_selection_membership=csm,
+        selection=selection,
+        attribution=attr,
+        reference_output=attr.reference_output,
+        disagreement_threshold=disagreement_threshold,
+        fuzzy_shape=fuzzy_shape,
+        support_percentiles=tuple(support_percentiles),
+        core_percentiles=tuple(core_percentiles),
+        pools=pools,
+        concept_estimator=concept_estimator,
+        point_estimate=point_estimate,
+        feature_weights=feature_weights,
+        empty_coalition_value=empty_coalition_value,
+        feature_mean=feature_mean,
+        feature_std=feature_std,
+        configuration_index=int(index),
+        linguistic_scale_method=linguistic_scale,
+    )

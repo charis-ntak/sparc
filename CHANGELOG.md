@@ -6,4 +6,5 @@
 - Estimator options: reference centred point estimate (default), direct Shapley values over fuzzy concepts with conditional or marginal imputation, importance weighted redistribution to features.
 - Synthetic problem generators for examples and tests.
 - Array interface of the explanation: `values`, `base_values`, `data` (concept scores), `names`, `importance`, indexing by instance; the views `as_list`, `as_dataframe`, `as_html`, `show_in_notebook`; `explainer(X)` as a shorthand of `explain`.
-- `sparc.plots`: bar, waterfall, beeswarm, heatmap, dependence, force and decision at the concept level, beside the fuzzy attribution, linguistic bar, Pareto front and membership plots.
+- `sparc.plots`: bar, waterfall, beeswarm, heatmap, dependence, force and decision at the concept level, beside the fuzzy attribution, linguistic bar, Pareto front and membership plots; the views only SPARC can draw: interval bars, linguistic profile, disagreement, concept graph, front, front navigator, selection membership and coverage.
+- `Explanation.at(index)`, `fidelity_optimal`, `front_members()`, `configurations` and `configuration_index`, to navigate the front; subsets of an explanation slice the partition pools so that they can be rebuilt at other members.

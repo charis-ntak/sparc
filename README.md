@@ -65,13 +65,26 @@ plots.dependence(explanation, "C1")         # attribution against the concept sc
 plots.force(explanation[0])                 # contributions pushing the output away from the base value
 plots.decision(explanation)                 # cumulative paths of all instances through the concepts
 
+```
+
+The views that only SPARC can draw, because it carries a distribution per attribution, the disagreement between model classes, a partition with degrees of membership and a front of explanations:
+
+```python
+plots.interval_bars(explanation[0])         # point, core and support of every attribution, sign confidence, disagreement
+plots.linguistic_profile(explanation[0])    # degree of every linguistic label for every concept
+plots.disagreement(explanation[0])          # the attribution distribution of every model class, concept by concept
+plots.concept_graph(explanation)            # the fuzzy partition as a picture of the features
+plots.front(explanation)                    # the Pareto front with the knee and the fidelity optimal member
+plots.front_navigator(explanation, 0)       # the explanation along the front, member by member
+plots.selection_membership(explanation)     # how often the front retains every concept and feature
+plots.coverage(explanation, replicate)      # coverage of a replicated attribution by the intervals
+
 plots.fuzzy_attribution(explanation, 0)     # membership functions of the fuzzy attributions
 plots.linguistic_bars(explanation, 0)       # bars with support whiskers and linguistic labels
-plots.pareto_front(explanation.front)       # fidelity loss against complexity, knee marked
 plots.membership(explanation.partition)     # feature by concept membership heat map
 ```
 
-Retained concepts are marked with an asterisk in the axis labels. The views that only SPARC can draw (interval bars, linguistic profile, model disagreement, concept graph, front navigator, selection membership, coverage) are the next release; see `docs/roadmap.md`.
+Retained concepts are marked with an asterisk in the axis labels. `explanation.at(index)` rebuilds the explanation at any other evaluated configuration, `explanation.fidelity_optimal` is the most faithful member of the front and `explanation.front_members()` lists the front from the simplest to the most complex explanation, so the knee is a default, not a limit.
 
 ## Estimator options
 
