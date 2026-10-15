@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.png" alt="SPARC" width="380"></p>
+
 # SPARC
 
 **Shapley Pareto Robust Concept attribution with fuzzy logic.** Post hoc explanations of tabular black box models that are stable, calibrated and sparse.
