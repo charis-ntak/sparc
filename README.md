@@ -27,14 +27,30 @@ from sparc.synthetic import make_synthetic
 problem = make_synthetic("additive", n_samples=600, n_features=9, rho=0.8, n_factors=3, random_state=0)
 X_train, X_test, y_train, y_test = train_test_split(problem.X, problem.y, random_state=0)
 
-explainer = sparc.Explainer(n_resamples=20, point_estimate="reference", random_state=0)
+explainer = sparc.Explainer(n_resamples=20, random_state=0)
 explainer.fit(X_train, y_train, feature_names=[f"x{j}" for j in range(9)])
-explanation = explainer.explain(X_test[:20])
+explanation = explainer(X_test[:20])   # or explainer.explain(...)
 
+explanation.values                      # point concept attribution, (n_explain, K)
+explanation.base_values                 # value the attributions are measured from
+explanation.names                       # concept names
+explanation[0]                          # the explanation of one instance (slices and index lists work too)
+explanation.as_list(0)                  # (concept, value, label, sign confidence), most important first
 print(explanation.describe(0))          # the linguistic explanation of the first instance
-explanation.instance_frame(0)           # concepts, fuzzy attribution, sign confidence, labels
+explanation.instance_frame(0)           # concepts, fuzzy attribution, sign confidence, labels, as a table
+explanation.as_dataframe()              # the long table of every instance and concept
+explanation.show_in_notebook(0)         # an HTML card in a Jupyter notebook
 explanation.front                       # the Pareto front of explanation configurations
 explanation.membership                  # feature by concept membership matrix
+```
+
+The explanation follows the conventions of `shap.Explanation` (`values`, `base_values`, `data`, indexing by instance) and of lime (`as_list`, `as_html`, `show_in_notebook`). `explanation.to_shap()` returns a `shap.Explanation` of the feature level redistribution, and `to_shap(level="concept")` one of the concept values with the concept scores as data, so that every plot of the shap package applies:
+
+```python
+import shap
+
+shap.plots.bar(explanation.to_shap(level="concept"))
+shap.plots.waterfall(explanation.to_shap()[0])
 ```
 
 The default model classes are a gradient boosting model (the reference model), a random forest and a multilayer perceptron; pass `model_classes=[("gbm", GradientBoostingRegressor()), ...]` to change them. Classifiers are explained through the probability of `target_class`. `apriori_groups` adds a known grouping of the features as a candidate partition, `solver="nsga2"` searches large decision spaces, and `n_jobs` parallelizes the pool.

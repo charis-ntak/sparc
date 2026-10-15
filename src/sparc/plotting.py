@@ -97,7 +97,9 @@ def plot_linguistic_bars(explanation, instance: int, retained_only: bool = True,
     hi = np.array([explanation.quantiles[instance, k, 4] for k in idx])
     colors = [PALETTE[0] if v >= 0 else PALETTE[1] for v in cen]
     ax.barh(y, cen, color=colors, height=0.55)
-    ax.errorbar(cen, y, xerr=[cen - lo, hi - cen], fmt="none", ecolor=TEXT, elinewidth=1, capsize=3)
+    # the support is drawn as an interval of its own: with the reference point estimate the bar may lie outside it
+    ax.hlines(y, lo, hi, color=TEXT, linewidth=1)
+    ax.vlines(np.concatenate([lo, hi]), np.concatenate([y, y]) - 0.12, np.concatenate([y, y]) + 0.12, color=TEXT, linewidth=1)
     for yi, k, v in zip(y, idx, cen):
         text = f"{explanation.label_set.names[label_idx[instance, k]]} ({deg[instance, k]:.2f}); sign conf. {explanation.sign_confidence[instance, k]:.2f}"
         ax.text(hi[yi] if v >= 0 else lo[yi], yi, "  " + text if v >= 0 else text + "  ", va="center", ha="left" if v >= 0 else "right", fontsize=8, color=MUTED)

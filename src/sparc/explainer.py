@@ -9,9 +9,10 @@ Usage
 
 from __future__ import annotations
 
+import html as _html
 import json
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Sequence
 
 import numpy as np
@@ -74,9 +75,247 @@ class Explanation:
     core_percentiles: tuple[float, float] = (25.0, 75.0)
     pools: dict = field(default_factory=dict, repr=False)
     concept_estimator: str = "aggregate"
-    point_estimate: str = "centroid"
+    point_estimate: str = "reference"
     feature_weights: str = "membership"
     empty_coalition_value: np.ndarray | None = None
+    feature_mean: np.ndarray | None = None
+    feature_std: np.ndarray | None = None
+    instance_index: np.ndarray | None = None
+
+    # ------------------------------------------------------------------
+    # shap style interface: values, base values, data, names, indexing
+    # ------------------------------------------------------------------
+    def __repr__(self) -> str:
+        return f"Explanation(n_explain={self.n_explain}, n_concepts={self.n_concepts}, retained={[self.concept_names[k] for k in self.retained]}, estimator={self.concept_estimator}, point={self.point_estimate})"
+
+    def __len__(self) -> int:
+        return self.n_explain
+
+    def __getitem__(self, item) -> "Explanation":
+        """Explanation of a subset of the explained instances: ``e[i]``, ``e[2:5]`` or ``e[[0, 3]]``.
+
+        Every per instance quantity is sliced; the partition, the selection
+        and the global quantities are shared. Integer indexing keeps one
+        instance (``len(e[i]) == 1``) so that the per instance plots and
+        ``describe(0)`` apply to the result.
+        """
+        n = self.n_explain
+        if isinstance(item, (int, np.integer)):
+            idx = np.array([int(item) % n if item < 0 else int(item)])
+            if idx[0] >= n:
+                raise IndexError(f"instance {item} out of range for {n} explained instances")
+        elif isinstance(item, slice):
+            idx = np.arange(n)[item]
+        else:
+            idx = np.asarray(item)
+            if idx.dtype == bool:
+                idx = np.flatnonzero(idx)
+            idx = idx.astype(int)
+        return self.subset(idx)
+
+    def subset(self, indices) -> "Explanation":
+        idx = np.asarray(indices, dtype=int)
+        attr = self.attribution
+        new_attr = replace(
+            attr,
+            values=attr.values[:, :, idx],
+            outputs=attr.outputs[:, :, idx],
+            reference_output=attr.reference_output[idx],
+            X_explain=None if attr.X_explain is None else attr.X_explain[idx],
+        )
+        original = self.instance_index if self.instance_index is not None else np.arange(self.n_explain)
+        return replace(
+            self,
+            quantiles=self.quantiles[idx],
+            concept_pool=self.concept_pool[:, idx],
+            sign_confidence=self.sign_confidence[idx],
+            disagreement=self.disagreement[idx],
+            type2_mask=self.type2_mask[idx],
+            linguistic=self.linguistic[idx],
+            reference_output=self.reference_output[idx],
+            attribution=new_attr,
+            empty_coalition_value=None if self.empty_coalition_value is None else self.empty_coalition_value[:, idx],
+            instance_index=np.asarray(original)[idx],
+        )
+
+    @property
+    def values(self) -> np.ndarray:
+        """Point concept attribution, shape (n_explain, K); the analogue of ``shap.Explanation.values``."""
+        return self.concept_centroids
+
+    @property
+    def base_values(self) -> np.ndarray:
+        """Value the concept attributions are measured from, shape (n_explain,).
+
+        For the aggregated estimator it is the expected output of the
+        reference model over its background sample; for the direct estimator
+        it is the value of the empty coalition of the reference model. With
+        ``point_estimate='reference'`` ``values.sum(axis=1) + base_values``
+        equals the reference model output of every instance.
+        """
+        n = self.n_explain
+        if self.concept_estimator == "direct" and self.empty_coalition_value is not None:
+            return np.asarray(self.empty_coalition_value[0], dtype=float)
+        return np.full(n, float(self.attribution.expected[0, 0]))
+
+    @property
+    def output(self) -> np.ndarray:
+        """Output of the reference model for every explained instance."""
+        return np.asarray(self.reference_output, dtype=float)
+
+    @property
+    def feature_names(self) -> list[str]:
+        names = list(getattr(self.partition, "feature_names", []) or [])
+        d = self.partition.U.shape[0]
+        return names if len(names) == d else [f"x{j}" for j in range(d)]
+
+    @property
+    def names(self) -> list[str]:
+        """Concept names, the item names of the shap style interface."""
+        return self.concept_names
+
+    @property
+    def X(self) -> np.ndarray | None:
+        """The explained instances (feature level), when the explanation carries them."""
+        return self.attribution.X_explain
+
+    @property
+    def data(self) -> np.ndarray | None:
+        """Concept scores of the explained instances, shape (n_explain, K).
+
+        The membership weighted mean of the standardized features of every
+        concept (standardized with the training mean and standard deviation),
+        the analogue of ``shap.Explanation.data`` at the concept level, used to
+        colour the beeswarm and the dependence plots.
+        """
+        X = self.X
+        if X is None:
+            return None
+        mean = self.feature_mean if self.feature_mean is not None else X.mean(axis=0)
+        std = self.feature_std if self.feature_std is not None else X.std(axis=0)
+        std = np.where(np.asarray(std) > 1e-12, std, 1.0)
+        Z = (X - mean) / std
+        U = self.partition.U
+        mass = U.sum(axis=0)
+        W = U / np.where(mass <= 0, 1.0, mass)[None, :]
+        return Z @ W
+
+    @property
+    def importance(self) -> np.ndarray:
+        """Mean absolute point attribution of every concept over the explained instances."""
+        return np.abs(self.values).mean(axis=0)
+
+    def fuzzy(self, instance: int, concept: int):
+        """Alias of :meth:`fuzzy_attribution`."""
+        return self.fuzzy_attribution(instance, concept)
+
+    def labels(self, instance: int) -> list[str]:
+        """Best linguistic label of every concept for one instance."""
+        idx, _ = self.best_labels()
+        return [self.label_set.names[int(k)] for k in idx[instance]]
+
+    def as_list(self, instance: int = 0, retained_only: bool = False) -> list[tuple]:
+        """Concepts of one instance as (name, value, label, sign confidence), most important first; the lime style view."""
+        idx, deg = self.best_labels()
+        v = self.values[instance]
+        retained = set(self.retained.tolist())
+        order = np.argsort(-np.abs(v))
+        out = []
+        for k in order:
+            if retained_only and k not in retained:
+                continue
+            out.append((self.concept_names[k], float(v[k]), self.label_set.names[int(idx[instance, k])], float(self.sign_confidence[instance, k])))
+        return out
+
+    def as_dataframe(self) -> pd.DataFrame:
+        """Long table with one row per explained instance and concept."""
+        idx, deg = self.best_labels()
+        v = self.values
+        retained = set(self.retained.tolist())
+        rows = []
+        inst = self.instance_index if self.instance_index is not None else np.arange(self.n_explain)
+        for i in range(self.n_explain):
+            for k in range(self.n_concepts):
+                q = self.quantiles[i, k]
+                rows.append(
+                    {
+                        "instance": int(inst[i]),
+                        "concept": self.concept_names[k],
+                        "value": float(v[i, k]),
+                        "median": float(q[2]),
+                        "support_low": float(q[0]),
+                        "core_low": float(q[1]),
+                        "core_high": float(q[3]),
+                        "support_high": float(q[4]),
+                        "sign_confidence": float(self.sign_confidence[i, k]),
+                        "disagreement": float(self.disagreement[i, k]),
+                        "type2": bool(self.type2_mask[i, k]),
+                        "label": self.label_set.names[int(idx[i, k])],
+                        "label_degree": float(deg[i, k]),
+                        "retained": k in retained,
+                        "selection_membership": float(self.concept_selection_membership[k]),
+                    }
+                )
+        return pd.DataFrame(rows)
+
+    def to_shap(self, level: str = "feature"):
+        """A ``shap.Explanation`` of the point attribution, for the plots of the shap package.
+
+        ``level='feature'`` redistributes the concept values to the features
+        (``feature_attribution``) with the explained instances as data;
+        ``level='concept'`` keeps the concept values with the concept scores as
+        data and the concept names as feature names.
+        """
+        import shap
+
+        if level == "feature":
+            return shap.Explanation(values=self.feature_attribution(), base_values=self.base_values, data=self.X, feature_names=self.feature_names)
+        if level == "concept":
+            return shap.Explanation(values=self.values, base_values=self.base_values, data=self.data, feature_names=self.concept_names)
+        raise ValueError("level must be 'feature' or 'concept'")
+
+    def as_html(self, instance: int = 0, retained_only: bool = False, max_display: int | None = None) -> str:
+        """Self contained HTML card of one instance: output, concept bars with labels, support and sign confidence."""
+        rows = self.as_list(instance, retained_only=retained_only)
+        if max_display is not None:
+            rows = rows[:max_display]
+        vmax = max([abs(r[1]) for r in rows] + [1e-12])
+        inst = int(self.instance_index[instance]) if self.instance_index is not None else instance
+        idx, _ = self.best_labels()
+        names = {n: k for k, n in enumerate(self.concept_names)}
+        retained = set(self.retained.tolist())
+        parts = [
+            '<div style="font-family:Georgia,serif;max-width:720px;border:1px solid #e6e5e1;border-radius:6px;padding:12px 16px;color:#0b0b0b">',
+            f'<div style="font-size:15px;margin-bottom:6px"><b>SPARC explanation</b> of instance {inst}: model output {self.output[instance]:.4g}, base value {self.base_values[instance]:.4g}</div>',
+            '<table style="border-collapse:collapse;width:100%;font-size:13px">',
+            '<tr style="color:#52514e;text-align:left"><th style="padding:4px 6px">concept</th><th style="padding:4px 6px">attribution</th><th style="padding:4px 6px">label</th><th style="padding:4px 6px">support</th><th style="padding:4px 6px">sign conf.</th></tr>',
+        ]
+        for name, value, label, sc in rows:
+            k = names[name]
+            q = self.quantiles[instance, k]
+            width = 100.0 * abs(value) / vmax
+            colour = "#2a78d6" if value >= 0 else "#eb6834"
+            weight = "600" if k in retained else "400"
+            bar = f'<div style="display:flex;align-items:center;gap:6px"><div style="height:10px;width:{width:.0f}%;max-width:160px;background:{colour};border-radius:2px"></div><span>{value:+.3g}</span></div>'
+            note = " (type 2)" if self.type2_mask[instance, k] else ""
+            parts.append(
+                f'<tr style="border-top:1px solid #e6e5e1;font-weight:{weight}"><td style="padding:4px 6px">{_html.escape(name)}</td><td style="padding:4px 6px;min-width:200px">{bar}</td>'
+                f'<td style="padding:4px 6px">{_html.escape(label)}{note}</td><td style="padding:4px 6px;color:#52514e">[{q[0]:+.3g}, {q[4]:+.3g}]</td><td style="padding:4px 6px">{sc:.2f}</td></tr>'
+            )
+        cfg = self.configuration
+        parts.append("</table>")
+        parts.append(f'<div style="font-size:12px;color:#52514e;margin-top:6px">{cfg.n_concepts} concepts, {len(self.retained)} retained at alpha {cfg.alpha:.2f}; bold rows are retained by the knee explanation; blue positive, orange negative.</div></div>')
+        return "".join(parts)
+
+    def show_in_notebook(self, instance: int = 0, **kwargs):
+        """Display the HTML card in a Jupyter notebook (returns the HTML string outside a notebook)."""
+        html = self.as_html(instance, **kwargs)
+        try:
+            from IPython.display import HTML, display
+
+            display(HTML(html))
+        except ImportError:
+            return html
 
     # ------------------------------------------------------------------
     @property
@@ -330,10 +569,11 @@ class Explainer(BaseEstimator):
         and insertion tests do.
     direct_imputation : {'conditional', 'marginal'}
         Imputation of the removed features in the direct estimator.
-    point_estimate : {'centroid', 'reference'}
-        Point attribution reported beside the fuzzy number: the centroid of
-        the trapezoid over the pool, or the attribution of the reference
-        model on the original data.
+    point_estimate : {'reference', 'centroid'}
+        Point attribution reported beside the fuzzy number: the attribution
+        of the reference model on the original data (default; the fuzzy
+        number, the sign confidence and the disagreement still describe the
+        whole pool), or the centroid of the trapezoid over the pool.
     feature_weights : {'membership', 'importance'}
         How a concept's credit is redistributed to its features by
         :meth:`Explanation.feature_attribution`.
@@ -378,7 +618,7 @@ class Explainer(BaseEstimator):
         nsga_generations: int = 30,
         concept_estimator: str = "aggregate",
         direct_imputation: str = "conditional",
-        point_estimate: str = "centroid",
+        point_estimate: str = "reference",
         feature_weights: str = "membership",
         task: str = "auto",
         target_class: int = 1,
@@ -563,6 +803,10 @@ class Explainer(BaseEstimator):
         self.X_train_ = X
         self.n_features_in_ = d
 
+    def __call__(self, X_explain) -> Explanation:
+        """Explain the given instances; ``explainer(X)`` is ``explainer.explain(X)``, as in shap."""
+        return self.explain(X_explain)
+
     def explain(self, X_explain) -> Explanation:
         """Compute the fuzzy concept explanation of the given instances."""
         X_explain = np.asarray(X_explain, dtype=float)
@@ -712,6 +956,8 @@ class Explainer(BaseEstimator):
             point_estimate=self.point_estimate,
             feature_weights=self.feature_weights,
             empty_coalition_value=empty_coalition_value,
+            feature_mean=self.engine_.X_train_.mean(axis=0),
+            feature_std=self.engine_.X_train_.std(axis=0),
         )
 
     def explanation_at(self, explanation: Explanation, index: int) -> Explanation:
