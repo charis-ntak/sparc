@@ -12,6 +12,7 @@ instability.
 Author: Charis Ntakolia, Hellenic Air Force Academy.
 """
 
+from sparc import plots  # noqa: E402
 from sparc.attribution import AttributionEngine, AttributionResult, aggregate_to_concepts, default_model_classes, redistribute_to_features, shapley_values
 from sparc.concept_shapley import concept_shapley_values, fuzzy_removal_weights
 from sparc.concepts import ConceptFormer, ConceptPartition, apriori_membership, fuzzy_c_means
@@ -52,6 +53,7 @@ __all__ = [
     "fuzzy_removal_weights",
     "knee_point",
     "pareto_mask",
+    "plots",
     "redistribute_to_features",
     "shapley_values",
 ]

@@ -111,8 +111,8 @@ def plot_linguistic_bars(explanation, instance: int, retained_only: bool = True,
     return ax
 
 
-def plot_shap_bars(values: np.ndarray, feature_names, ax=None, top: int = 15, title: str = "SHAP"):
-    """Plain feature level bar plot for comparison formats."""
+def plot_feature_bars(values: np.ndarray, feature_names, ax=None, top: int = 15, title: str = "feature level attribution"):
+    """Plain feature level bar plot of an attribution vector."""
     plt = _plt()
     if ax is None:
         _, ax = plt.subplots(figsize=(6.5, 3.2))

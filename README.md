@@ -44,29 +44,34 @@ explanation.front                       # the Pareto front of explanation config
 explanation.membership                  # feature by concept membership matrix
 ```
 
-The explanation follows the conventions of `shap.Explanation` (`values`, `base_values`, `data`, indexing by instance) and of lime (`as_list`, `as_html`, `show_in_notebook`). `explanation.to_shap()` returns a `shap.Explanation` of the feature level redistribution, and `to_shap(level="concept")` one of the concept values with the concept scores as data, so that every plot of the shap package applies:
-
-```python
-import shap
-
-shap.plots.bar(explanation.to_shap(level="concept"))
-shap.plots.waterfall(explanation.to_shap()[0])
-```
 
 The default model classes are a gradient boosting model (the reference model), a random forest and a multilayer perceptron; pass `model_classes=[("gbm", GradientBoostingRegressor()), ...]` to change them. Classifiers are explained through the probability of `target_class`. `apriori_groups` adds a known grouping of the features as a candidate partition, `solver="nsga2"` searches large decision spaces, and `n_jobs` parallelizes the pool.
 
+The explanation exposes `values`, `base_values`, `data` (concept scores), `names` and `importance`, can be indexed by instance, and offers `as_list`, `as_dataframe`, `as_html` and `show_in_notebook`, so the usual workflows of attribution libraries carry over without translation.
+
 ## Plots
 
-```python
-from sparc import plotting
+Every plot takes an explanation, or one instance of it, draws with matplotlib and returns the axes.
 
-plotting.plot_fuzzy_attribution(explanation, instance=0)   # membership functions of the fuzzy attributions
-plotting.plot_linguistic_bars(explanation, instance=0)     # bars with support whiskers and labels
-plotting.plot_pareto_front(explanation.front)              # fidelity loss against complexity, knee marked
-plotting.plot_membership(explanation.partition)            # membership heat map
+```python
+from sparc import plots
+
+plots.bar(explanation)                      # concept importance with the support of the fuzzy global importance
+plots.bar(explanation[0])                   # signed attributions of one instance with their supports
+plots.waterfall(explanation[0])             # from the base value to the output, concept by concept
+plots.beeswarm(explanation)                 # one dot per instance and concept, coloured by the concept score
+plots.heatmap(explanation)                  # instances by concepts, ordered by the model output
+plots.dependence(explanation, "C1")         # attribution against the concept score, coloured by the interacting concept
+plots.force(explanation[0])                 # contributions pushing the output away from the base value
+plots.decision(explanation)                 # cumulative paths of all instances through the concepts
+
+plots.fuzzy_attribution(explanation, 0)     # membership functions of the fuzzy attributions
+plots.linguistic_bars(explanation, 0)       # bars with support whiskers and linguistic labels
+plots.pareto_front(explanation.front)       # fidelity loss against complexity, knee marked
+plots.membership(explanation.partition)     # feature by concept membership heat map
 ```
 
-A plotting API in the style of `shap.plots` (bar, waterfall, beeswarm, heatmap, dependence, force, decision) and the views that only SPARC can draw (interval bars, linguistic profile, model disagreement, concept graph, front navigator, selection membership) are the next release; see `docs/roadmap.md`.
+Retained concepts are marked with an asterisk in the axis labels. The views that only SPARC can draw (interval bars, linguistic profile, model disagreement, concept graph, front navigator, selection membership, coverage) are the next release; see `docs/roadmap.md`.
 
 ## Estimator options
 
@@ -76,7 +81,7 @@ A plotting API in the style of `shap.plots` (bar, waterfall, beeswarm, heatmap, 
 
 ## Properties
 
-The concept attribution satisfies efficiency for every membership matrix whose rows sum to one, reduces to SHAP for the identity partition, is symmetric, and is invariant to the duplication of a feature at the level of the concept that absorbs the copy. The direct estimator shows that the attribution is the Shapley value of a cooperative game over fuzzy concepts whose coalitions keep features to the degree of their membership. The tests under `tests/` check these properties numerically.
+The concept attribution satisfies efficiency for every membership matrix whose rows sum to one, reduces to feature level Shapley values for the identity partition, is symmetric, and is invariant to the duplication of a feature at the level of the concept that absorbs the copy. The direct estimator shows that the attribution is the Shapley value of a cooperative game over fuzzy concepts whose coalitions keep features to the degree of their membership. The tests under `tests/` check these properties numerically.
 
 ## The study
 

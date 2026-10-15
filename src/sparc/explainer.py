@@ -83,7 +83,7 @@ class Explanation:
     instance_index: np.ndarray | None = None
 
     # ------------------------------------------------------------------
-    # shap style interface: values, base values, data, names, indexing
+    # array interface: values, base values, data, names, indexing
     # ------------------------------------------------------------------
     def __repr__(self) -> str:
         return f"Explanation(n_explain={self.n_explain}, n_concepts={self.n_concepts}, retained={[self.concept_names[k] for k in self.retained]}, estimator={self.concept_estimator}, point={self.point_estimate})"
@@ -140,7 +140,7 @@ class Explanation:
 
     @property
     def values(self) -> np.ndarray:
-        """Point concept attribution, shape (n_explain, K); the analogue of ``shap.Explanation.values``."""
+        """Point concept attribution, shape (n_explain, K)."""
         return self.concept_centroids
 
     @property
@@ -171,7 +171,7 @@ class Explanation:
 
     @property
     def names(self) -> list[str]:
-        """Concept names, the item names of the shap style interface."""
+        """Concept names."""
         return self.concept_names
 
     @property
@@ -185,8 +185,7 @@ class Explanation:
 
         The membership weighted mean of the standardized features of every
         concept (standardized with the training mean and standard deviation),
-        the analogue of ``shap.Explanation.data`` at the concept level, used to
-        colour the beeswarm and the dependence plots.
+        used to colour the beeswarm and the dependence plots.
         """
         X = self.X
         if X is None:
@@ -215,7 +214,7 @@ class Explanation:
         return [self.label_set.names[int(k)] for k in idx[instance]]
 
     def as_list(self, instance: int = 0, retained_only: bool = False) -> list[tuple]:
-        """Concepts of one instance as (name, value, label, sign confidence), most important first; the lime style view."""
+        """Concepts of one instance as (name, value, label, sign confidence), most important first."""
         idx, deg = self.best_labels()
         v = self.values[instance]
         retained = set(self.retained.tolist())
@@ -257,22 +256,6 @@ class Explanation:
                     }
                 )
         return pd.DataFrame(rows)
-
-    def to_shap(self, level: str = "feature"):
-        """A ``shap.Explanation`` of the point attribution, for the plots of the shap package.
-
-        ``level='feature'`` redistributes the concept values to the features
-        (``feature_attribution``) with the explained instances as data;
-        ``level='concept'`` keeps the concept values with the concept scores as
-        data and the concept names as feature names.
-        """
-        import shap
-
-        if level == "feature":
-            return shap.Explanation(values=self.feature_attribution(), base_values=self.base_values, data=self.X, feature_names=self.feature_names)
-        if level == "concept":
-            return shap.Explanation(values=self.values, base_values=self.base_values, data=self.data, feature_names=self.concept_names)
-        raise ValueError("level must be 'feature' or 'concept'")
 
     def as_html(self, instance: int = 0, retained_only: bool = False, max_display: int | None = None) -> str:
         """Self contained HTML card of one instance: output, concept bars with labels, support and sign confidence."""
@@ -478,7 +461,9 @@ class Explanation:
                 )
         return "\n".join(lines)
 
+    @property
     def front(self) -> pd.DataFrame:
+        """The evaluated configurations with their objectives, Pareto and knee flags (the front as a table)."""
         return self.selection.front
 
     def to_dict(self) -> dict:
@@ -530,7 +515,7 @@ class Explainer(BaseEstimator):
     n_concepts_grid : iterable of int
         Candidate numbers of concepts K. A value equal to the number of
         features d gives the identity partition (one crisp concept per
-        feature, the K = d case of the reduction to SHAP), which is also the
+        feature, the K = d case of the reduction to feature level Shapley values), which is also the
         fallback when no other data driven candidate can be formed; values
         outside 1 to d are ignored with a warning.
     fuzzifier_grid : iterable of float
@@ -804,7 +789,7 @@ class Explainer(BaseEstimator):
         self.n_features_in_ = d
 
     def __call__(self, X_explain) -> Explanation:
-        """Explain the given instances; ``explainer(X)`` is ``explainer.explain(X)``, as in shap."""
+        """Explain the given instances; ``explainer(X)`` is ``explainer.explain(X)``."""
         return self.explain(X_explain)
 
     def explain(self, X_explain) -> Explanation:

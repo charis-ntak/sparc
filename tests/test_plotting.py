@@ -99,13 +99,13 @@ def test_shap_bars():
     values = rng.normal(size=12)
     values[3] = -5.0
     names = [f"f{j}" for j in range(12)]
-    ax = plotting.plot_shap_bars(values, names, top=4, title="reference")
+    ax = plotting.plot_feature_bars(values, names, top=4, title="reference")
     order = np.argsort(np.abs(values))[-4:]
     assert len(ax.patches) == 4
     assert [t.get_text() for t in ax.get_yticklabels()] == [names[j] for j in order]
     assert ax.get_title(loc="left") == "reference"
     assert ax.patches[-1].get_facecolor() == to_rgba(plotting.PALETTE[1])  # the largest magnitude is negative
-    ax_all = plotting.plot_shap_bars(values, names, top=100)
+    ax_all = plotting.plot_feature_bars(values, names, top=100)
     assert len(ax_all.patches) == 12
 
 

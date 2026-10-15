@@ -1,4 +1,4 @@
-"""The shap style interface of the explanation: values, base values, data, indexing, conversions and views."""
+"""The array interface of the explanation: values, base values, data, indexing and views."""
 
 import numpy as np
 import pytest
@@ -62,22 +62,6 @@ def test_data_are_concept_scores_from_standardized_features(explanation):
     assert e.feature_names == [f"f{j}" for j in range(U.shape[0])]
     assert e.names == e.concept_names
     np.testing.assert_allclose(e.importance, np.abs(e.values).mean(axis=0))
-
-
-def test_to_shap_feature_and_concept_level(explanation):
-    shap = pytest.importorskip("shap")
-    _, e = explanation
-    sf = e.to_shap()
-    assert isinstance(sf, shap.Explanation)
-    assert sf.values.shape == (12, e.partition.U.shape[0])
-    assert list(sf.feature_names) == e.feature_names
-    np.testing.assert_allclose(sf.values.sum(axis=1), e.values.sum(axis=1), atol=1e-9)
-    np.testing.assert_allclose(sf.base_values, e.base_values)
-    sc = e.to_shap(level="concept")
-    assert sc.values.shape == (12, e.n_concepts) and list(sc.feature_names) == e.concept_names
-    np.testing.assert_allclose(sc.data, e.data)
-    with pytest.raises(ValueError):
-        e.to_shap(level="other")
 
 
 def test_list_dataframe_and_labels_views(explanation):

@@ -58,7 +58,7 @@ def test_frames_and_text(fitted, tmp_path):
     assert "Instance 0" in txt and "compatibility" in txt
     txt_all = e.describe(0, retained_only=False)
     assert len(txt_all) >= len(txt)
-    front = e.front()
+    front = e.front
     assert front["pareto"].all()
     d = e.to_dict()
     json.dumps(d)
