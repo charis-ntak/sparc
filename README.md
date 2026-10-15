@@ -6,6 +6,8 @@ Charis Ntakolia, Department of Aeronautical Studies, Hellenic Air Force Academy.
 
 SPARC attributes a prediction to fuzzy concepts of correlated features instead of to single features, so that the credit is not split arbitrarily among features that carry the same information. Every attribution is estimated over bootstrap resamples and several model classes and reported as a trapezoidal fuzzy number with a sign confidence, a disagreement index between model classes and a linguistic label such as weakly positive. The number of concepts, the fuzzifier, the sparsity and the alpha level are selected from a Pareto front that trades off fidelity loss, complexity and instability; a knee point is reported by default and the whole front is kept.
 
+Documentation: https://charis-ntak.github.io/sparc/ (getting started, three tutorials on built in datasets, the plot gallery, the estimator options and the API reference).
+
 ## Installation
 
 ```

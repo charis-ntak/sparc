@@ -197,7 +197,10 @@ def make_synthetic(
     duplicate_noise : standard deviation of the perturbation of near duplicates (exact copies use 0)
     duplicates : explicit list of (source feature, position, noise sd) used when resampling
 
-    A value outside these ranges raises ValueError.
+    Raises
+    ------
+    ValueError
+        When a value lies outside the ranges above.
     """
     if family not in ("additive", "interaction", "redundancy"):
         raise ValueError("family must be 'additive', 'interaction' or 'redundancy'")

@@ -1,0 +1,27 @@
+name: docs
+
+"on":
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install the package and the documentation tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[docs]"
+      - name: Build the site strictly
+        run: python -m mkdocs build --strict
+      - name: Deploy to GitHub Pages
+        run: python -m mkdocs gh-deploy --force --no-history

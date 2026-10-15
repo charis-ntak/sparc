@@ -451,7 +451,11 @@ def interval_bars(explanation, instance: int | None = None, max_display: int = 1
         if explanation.type2_mask[i, k]:
             for m in range(M):
                 ax.plot([float(np.median(pool[:, m, i, k]))], [yi], marker="|", color=PALETTE[3], markersize=14, markeredgewidth=2)
-        text = f"sign conf. {explanation.sign_confidence[i, k]:.2f}, disagreement {explanation.disagreement[i, k]:.2f}" + (" (type 2)" if explanation.type2_mask[i, k] else "")
+        flag = " (type 2)" if explanation.type2_mask[i, k] else ""
+        if compact:
+            text = f"sign conf. {explanation.sign_confidence[i, k]:.2f}{flag}"
+        else:
+            text = f"sign conf. {explanation.sign_confidence[i, k]:.2f}, disagreement {explanation.disagreement[i, k]:.2f}{flag}"
         ax.text(max(q[4], v[k], 0.0), yi, "  " + text, va="center", ha="left", fontsize=7.5, color=MUTED)
     ax.set_yticks(y)
     ax.set_yticklabels(_tick_labels(explanation, order))

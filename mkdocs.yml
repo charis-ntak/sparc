@@ -1,0 +1,79 @@
+site_name: SPARC
+site_description: Shapley Pareto Robust Concept attribution with fuzzy logic, stable, calibrated and sparse explanations of tabular black box models
+site_url: https://charis-ntak.github.io/sparc/
+repo_url: https://github.com/charis-ntak/sparc
+repo_name: charis-ntak/sparc
+copyright: Charis Ntakolia, Hellenic Air Force Academy. MIT licence.
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: dark mode
+    - scheme: slate
+      primary: blue
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: light mode
+  font:
+    text: Source Serif 4
+    code: Source Code Pro
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.integrate
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Tutorials:
+      - Regression with a known concept structure: tutorials/regression.md
+      - Binary classification with known feature groups: tutorials/classification.md
+      - More than two classes: tutorials/multiclass.md
+  - Plot gallery: gallery.md
+  - Estimator options: estimator-options.md
+  - Properties: properties.md
+  - API reference:
+      - Explainer and Explanation: api/explainer.md
+      - Plots: api/plots.md
+      - Concepts and fuzzification: api/concepts.md
+      - Selection: api/selection.md
+      - Attribution and the direct estimator: api/attribution.md
+  - Changelog: changelog.md
+  - Roadmap: roadmap.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_javascript:
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: false
+            show_root_heading: true
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: false
