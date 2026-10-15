@@ -29,7 +29,7 @@ from sparc.selection import ExplanationConfiguration, ParetoSelector, knee_point
 PFCAExplainer = Explainer
 PFCAExplanation = Explanation
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "Charis Ntakolia"
 
 __all__ = [
